@@ -1,0 +1,63 @@
+import os
+import fitz  # PyMuPDF
+from PIL import Image
+
+def pdf_folder_to_images_and_yolo_annotations(pdf_folder, output_folder, target_classes):
+    # Ensure the output folder exists
+    os.makedirs(output_folder, exist_ok=True)
+
+    # Loop through each PDF file in the folder
+    for pdf_file in os.listdir(pdf_folder):
+        if pdf_file.endswith(".pdf"):
+            pdf_path = os.path.join(pdf_folder, pdf_file)
+
+            # Open the PDF file
+            pdf_document = fitz.open(pdf_path)
+
+            # Loop through each page
+            for page_number in range(pdf_document.page_count):
+                page = pdf_document[page_number]
+
+                # Get the annotations on the page
+                annotations = page.firstAnnot
+                annotations_list = []
+
+                while annotations:
+                    # Assuming rectangles represent bounding boxes
+                    if annotations.type[0] == 8:  # 8 corresponds to a rectangle annotation
+                        x, y, width, height = annotations.rect
+                        class_label = annotations.info["title"]
+
+                        # Check if the class label is in the target classes list
+                        if class_label in target_classes:
+                            # Convert to YOLO format
+                            center_x = (x + width / 2) / page.rect.width
+                            center_y = (y + height / 2) / page.rect.height
+                            normalized_width = width / page.rect.width
+                            normalized_height = height / page.rect.height
+
+                            annotations_list.append(f"{class_label} {center_x} {center_y} {normalized_width} {normalized_height}\n")
+
+                    annotations = annotations.next
+
+                # Save the image only if there are annotations for the target classes
+                if annotations_list:
+                    # Save the image
+                    image_path = f"{output_folder}/{pdf_file}_page_{page_number + 1}.png"
+                    image = Image.frombytes("RGB", [page.rect.width, page.rect.height], page.get_pixmap().samples)
+                    image.save(image_path)
+
+                    # Save YOLO annotation file
+                    annotation_path = f"{output_folder}/{pdf_file}_page_{page_number + 1}.txt"
+                    with open(annotation_path, 'w') as output_file:
+                        output_file.writelines(annotations_list)
+
+            # Close the PDF file
+            pdf_document.close()
+
+# Example usage
+pdf_folder = 'path/to/your/pdf/folder'
+output_folder = 'path/to/save/images_and_annotations'
+target_classes = ['class1', 'class2']  # Add your target classes to this list
+
+pdf_folder_to_images_and_yolo_annotations(pdf_folder, output_folder, target_classes)
